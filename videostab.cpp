@@ -1,16 +1,15 @@
+// videostab.cpp
+//
+
 #include "videostab.h"
+
 #include <cmath>
 
 //Parameters for Kalman Filter
 #define Q1 0.004
 #define R1 0.5
 
-//To see the results of before and after stabilization simultaneously
-#define test 1
-
-VideoStab::VideoStab()
-{
-
+VideoStab::VideoStab() {
     smoothedMat.create(2 , 3 , CV_64F);
 
     k = 1;
@@ -47,8 +46,10 @@ VideoStab::VideoStab()
 
 }
 
-//The main stabilization function
-Mat VideoStab::stabilize(Mat frame_1, Mat frame_2)
+// The main stabilization function.
+//
+// Set test parameter to true to see the results of before and after stabilization simultaneously.
+Mat VideoStab::stabilize(Mat frame_1, Mat frame_2, bool test)
 {
     cvtColor(frame_1, frame1, COLOR_BGR2GRAY);
     cvtColor(frame_2, frame2, COLOR_BGR2GRAY);
@@ -74,7 +75,8 @@ Mat VideoStab::stabilize(Mat frame_1, Mat frame_2)
     }
 
     //All the parameters scale, angle, and translation are stored in affine
-    affine = estimateRigidTransform(goodFeatures1, goodFeatures2, false);
+#pragma warning(suppress : 4996)
+    affine = estimateRigidTransform(goodFeatures1, goodFeatures2, false); // TODO: replace with cv::estimateAffine2D(...) call.
 
     //cout<<affine;
     //flush(cout);

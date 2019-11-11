@@ -1,89 +1,124 @@
+// main.cpp
+//
+
+#include <algorithm>
+#include <chrono>
+#include <cmath>
+#include <fstream>
+#include <iostream>
+#include <memory>
+
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
-#include "opencv2/features2d/features2d.hpp"
-#include "opencv2/nonfree/nonfree.hpp"
-#include "opencv2/flann/flann.hpp"
-#include "opencv2/calib3d/calib3d.hpp"
+#include <opencv2/features2d/features2d.hpp>
+#include <opencv2/flann/flann.hpp>
+#include <opencv2/calib3d/calib3d.hpp>
 #include <opencv2/opencv.hpp>
-#include <iostream>
-#include <cmath>
-#include <fstream>
-#include <time.h>
-#include <videostab.h>
 
-using namespace std;
-using namespace cv;
+#include "videostab.h"
+
 
 // This class redirects cv::Exception to our process so that we can catch it and handle it accordingly.
 class cvErrorRedirector {
-public:
-    int cvCustomErrorCallback( )
-    {
-        std::cout << "A cv::Exception has been caught. Skipping this frame..." << std::endl;
-        return 0;
-    }
+private:
+	std::shared_ptr<long long> pFrameNumber;
 
-    cvErrorRedirector() {
-        cvRedirectError((cv::ErrorCallback)cvCustomErrorCallback(), this);
-    }
+public:
+	int cvCustomErrorCallback() {
+		std::cout << "A cv::Exception has been caught. Skipping frame " << *pFrameNumber << "..." << std::endl;
+		return 0;
+	}
+
+	cvErrorRedirector(std::shared_ptr<long long> frame_number_counter) {
+		pFrameNumber = frame_number_counter;
+		cv::redirectError((cv::ErrorCallback)cvCustomErrorCallback(), this);
+	}
 };
 
-const int HORIZONTAL_BORDER_CROP = 30;
 
-int main(int argc, char **argv)
-{
-    cvErrorRedirector redir;
-    
-    //Create a object of stabilization class
-    VideoStab stab;
+/****************************
+ * Entry point of execution *
+ ****************************/
+int main(int argc, char *argv[]) {
+	using namespace std::chrono;
 
-    //Initialize the VideoCapture object
-    VideoCapture cap(0);
+	std::string sSourceFilePath;
+	if (argc < 2) {
+		std::cerr << "ERROR: incorrect number of arguments" << std::endl;
+		return -1;
+	}
+	sSourceFilePath.assign(argv[1]);
 
-    Mat frame_2, frame2;
-    Mat frame_1, frame1;
+	std::string sDestinationFilePath("./com.avi");
+	if (argc > 2) {
+		sDestinationFilePath.assign(argv[2]);
+	}
 
-    cap >> frame_1;
-    cvtColor(frame_1, frame1, COLOR_BGR2GRAY);
+	bool bShowWindows = false;
+	if (argc > 3) {
+		std::string sParamTwo(argv[3]);
+		std::transform(sParamTwo.begin(), sParamTwo.end(), sParamTwo.begin(), std::tolower);
+		bShowWindows = (sParamTwo == "true" || sParamTwo == "1");
+	}
 
-    Mat smoothedMat(2,3,CV_64F);
+	auto pnFrame = std::make_shared<long long>(-1);
 
-    VideoWriter outputVideo;
-    outputVideo.open("com.avi" , CV_FOURCC('X' , 'V' , 'I' , 'D'), 30 , frame_1.size());
+	// Redirect exceptions.
+	cvErrorRedirector redir(pnFrame);
 
-    while(true)
-    {
-        try {
-            cap >> frame_2;
+	//Create a object of stabilization class
+	VideoStab stab;
 
-            if(frame_2.data == NULL)
-            {
-                break;
-            }
+	//Initialize the VideoCapture object
+	cv::VideoCapture cap(sSourceFilePath);
+	auto nTotalFrameCount = cap.get(CAP_PROP_FRAME_COUNT);
+	auto fSourceFPS = cap.get(CAP_PROP_FPS);
 
-            cvtColor(frame_2, frame2, COLOR_BGR2GRAY);
+	cv::Mat frame_2;
+	cv::Mat frame_1;
 
-            Mat smoothedFrame;
+	auto oStartTime = high_resolution_clock::now();
 
-            smoothedFrame = stab.stabilize(frame_1 , frame_2);
+	cap >> frame_1;
+	(*pnFrame)++;
 
-            outputVideo.write(smoothedFrame);
+	cv::Mat_<double> smoothedMat(2, 3);
 
-            imshow("Stabilized Video" , smoothedFrame);
+	cv::VideoWriter outputVideo;
+	outputVideo.open(
+		sDestinationFilePath,
+		cv::VideoWriter::fourcc('X', 'V', 'I', 'D'),
+		fSourceFPS,
+		frame_1.size());
 
-            waitKey(10);
+	while (true) {
+		cap >> frame_2;
+		(*pnFrame)++;
 
-            frame_1 = frame_2.clone();
-            frame2.copyTo(frame1);
-        } catch (cv::Exception& e) {
-            cap >> frame_1;
-            cvtColor(frame_1, frame1, COLOR_BGR2GRAY);
-        }
+		if (frame_2.data == NULL) {
+			break;
+		}
 
-    }
+		cv::Mat smoothedFrame;
 
-    return 0;
+		smoothedFrame = stab.stabilize(frame_1, frame_2, bShowWindows);
+
+		outputVideo.write(smoothedFrame);
+
+		if (bShowWindows) {
+			cv::imshow("Stabilized Video", smoothedFrame);
+		}
+
+		frame_1 = frame_2.clone();
+	}
+
+	auto oEndTime = high_resolution_clock::now();
+	auto oRunTIme = duration_cast<duration<double>>(oEndTime - oStartTime);
+	std::cout << "\nProcessed frames: "
+		<< (*pnFrame) << "/" << nTotalFrameCount
+		<< "; Source FPS: " << fSourceFPS
+		<< "; Processing FPS: " << ((*pnFrame) / oRunTIme.count()) << std::endl;
+
+	return 0;
 }
-
-

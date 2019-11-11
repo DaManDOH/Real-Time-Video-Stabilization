@@ -1,16 +1,19 @@
-#ifndef VIDEOSTAB_H
-#define VIDEOSTAB_H
+// videostab.h
+//
+
+#pragma once
+
+#include <iostream>
 
 #include <opencv2/opencv.hpp>
-#include <iostream>
 
 using namespace cv;
 using namespace std;
 
-class VideoStab
-{
+class VideoStab {
 public:
     VideoStab();
+
     VideoCapture capture;
 
     Mat frame2;
@@ -70,8 +73,6 @@ public:
     double sum_transX ;
     double sum_transY ;
 
-    Mat stabilize(Mat frame_1 , Mat frame_2);
+    Mat stabilize(Mat frame_1 , Mat frame_2, bool test = false);
     void Kalman_Filter(double *scaleX , double *scaleY , double *thetha , double *transX , double *transY);
 };
-
-#endif // VIDEOSTAB_H
